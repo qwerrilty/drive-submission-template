@@ -475,9 +475,26 @@ function parseName(filename){
     if(tokens.length && /^EXP$/i.test(tokens[tokens.length-1])){ tokens.pop(); dateKind="expiry"; }
     if(expiry && dateKind==="expiry") expired = expiry<new Date();
   } else if(tokens.length && /^EXP$/i.test(tokens[tokens.length-1])){ tokens.pop(); dateKind="expiry"; }
-  // first two tokens = name (single-person, form is authoritative; used only to auto-fill)
-  const first=tokens.shift()||"", last=tokens.shift()||"";
-  const compliance=tokens.join(" ").trim();
+  // Name is "First [Middle...] Last" (any number of first-name words) followed by the
+  // compliance code, so we can't just take the first two tokens as the name — scan from
+  // the end for the smallest trailing chunk that matches a known code (handles multi-word
+  // first names like "MARY JANE SMITH DAS"); fall back to the old 2-token assumption for
+  // codes we don't recognise (e.g. freeform induction names like "RTIO IOE").
+  const codeRecognized=str=>{
+    const nk=norm(str);
+    if(ABBREV[nk]) return true;
+    const firstTok=norm(str.split(/\s+/)[0]||"");
+    return !!ABBREV[firstTok];
+  };
+  let splitK=null;
+  for(let cand=1; cand<=3 && cand<tokens.length; cand++){
+    if(codeRecognized(tokens.slice(tokens.length-cand).join(" "))){ splitK=cand; break; }
+  }
+  if(splitK===null) splitK=Math.max(tokens.length-2,1);
+  const nameTokens=tokens.slice(0,tokens.length-splitK);
+  const complianceTokens=tokens.slice(tokens.length-splitK);
+  const first=nameTokens.slice(0,-1).join(" "), last=nameTokens.length?nameTokens[nameTokens.length-1]:"";
+  const compliance=complianceTokens.join(" ").trim();
   // match compliance -> canonical key
   let keys=[];
   const nk=norm(compliance);
