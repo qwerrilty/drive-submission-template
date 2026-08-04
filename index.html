@@ -452,6 +452,15 @@ function setDlClasses(i,str){ const a=str.toUpperCase().replace(/[^A-Z0-9]/g," "
   if(FILES[i].dlClass) FILES[i].keys=[DL_CLASS_TO_KEY[FILES[i].dlClass]||"dl_c"]; renderFiles(); render(); }
 
 /* ---------------- filename parser ---------------- */
+// compliance types whose printed date is an issue date, not a printed expiry —
+// validity window used to compute expiry ourselves (extend as more rules are confirmed)
+const VALIDITY = { das:{days:28}, pem:{years:1} };
+function addValidity(date,spec){
+  const d=new Date(date);
+  if(spec.years) d.setFullYear(d.getFullYear()+spec.years);
+  if(spec.days) d.setDate(d.getDate()+spec.days);
+  return d;
+}
 function parseName(filename){
   let base=filename.replace(/\.[^.]+$/,"").trim();
   let tokens=base.split(/\s+/);
@@ -484,6 +493,10 @@ function parseName(filename){
   let displayName;
   if(mapped) displayName = keys[0]==="voc" && vocType ? `${LIB.voc.label} – ${vocType}` : LIB[keys[0]].label;
   else displayName = compliance || "(unnamed)";
+  // for issue-dated types with a known validity window (e.g. DAS, PEM), compute expiry ourselves
+  if(!expired && expiry && dateKind==="issue" && VALIDITY[keys[0]]){
+    expired = addValidity(expiry,VALIDITY[keys[0]]) < new Date();
+  }
   return {name:filename,first,last,compliance,keys,vocType,mapped,displayName,expiry,dateKind,expired,hrwlClasses:[],dlClasses:[],dlClass:"",reading:false,ocr:false};
 }
 
@@ -515,7 +528,9 @@ function renderFiles(){
     else if(isDl) detail=`<span class="clsedit">class <input value="${f.dlClasses.join(' ')}" placeholder="e.g. HR" onchange="setDlClasses(${i},this.value)"></span>`;
     else if(f.expiry){
       const k=f.dateKind==="expiry";
-      detail=`<span class="badge ${k?(f.expired?'expired':'exp'):'issue'}">${k?(f.expired?'EXPIRED ':'exp '):'issued '}${fmtDate(f.expiry)}</span>`;
+      const cls = f.expired ? 'expired' : (k?'exp':'issue');
+      const label = f.expired ? 'EXPIRED ' : (k?'exp ':'issued ');
+      detail=`<span class="badge ${cls}">${label}${fmtDate(f.expiry)}</span>`;
     }
     div.innerHTML=`<span class="name">${f.name}</span>${matchBadge}${detail}<span class="x" onclick="removeFile(${i})">✕</span>`;
     host.appendChild(div);
@@ -619,13 +634,15 @@ function detailInline(r){
   if(!r.detail) return "";
   if(r.detailKind==="class") return ` <span class="cls">(${r.isHrwl?'classes':'class'}: ${r.detail})</span>`;
   if(r.detailKind==="voc") return ` <span class="cls">(${r.detail})</span>`;
-  if(r.detailKind==="issue") return ` <span class="iss">(issued ${r.detail})</span>`;
+  if(r.detailKind==="issue") return r.expired
+    ? ` <span class="exp">(issued ${r.detail} – EXPIRED)</span>`
+    : ` <span class="iss">(issued ${r.detail})</span>`;
   return ` <span class="exp">(exp ${r.detail}${r.expired?' – EXPIRED':''})</span>`;
 }
 function detailCell(r){
   if(!r.detail) return "";
   if(r.detailKind==="class"||r.detailKind==="voc") return r.detail;
-  if(r.detailKind==="issue") return "issued "+r.detail;
+  if(r.detailKind==="issue") return "issued "+r.detail+(r.expired?' ⚠ EXPIRED':'');
   return r.detail+(r.expired?' ⚠':'');
 }
 
@@ -795,11 +812,11 @@ async function downloadDocx(){
   const dtl=r=>{ if(!r.detail)return "";
     if(r.detailKind==="class") return "  ("+(r.isHrwl?"classes":"class")+": "+r.detail+")";
     if(r.detailKind==="voc") return "  ("+r.detail+")";
-    if(r.detailKind==="issue") return "  (issued "+r.detail+")";
-    return "  (exp "+r.detail+")"; };
+    if(r.detailKind==="issue") return "  (issued "+r.detail+(r.expired?" – EXPIRED":"")+")";
+    return "  (exp "+r.detail+(r.expired?" – EXPIRED":"")+")"; };
   const dcell=r=>{ if(!r.detail)return "";
     if(r.detailKind==="class"||r.detailKind==="voc") return r.detail;
-    if(r.detailKind==="issue") return "issued "+r.detail;
+    if(r.detailKind==="issue") return "issued "+r.detail+(r.expired?" ⚠ EXPIRED":"");
     return r.detail+(r.expired?" ⚠":""); };
 
   if(m.statusMode==="attached_tbc"){
