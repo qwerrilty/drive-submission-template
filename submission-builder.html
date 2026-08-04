@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Submission Builder — Drive Personnel</title>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --text:#e6e9ef; --muted:#9aa3b2; --accent:#4f8cff; --accent2:#3a6fd8;
+    --ok:#37c07a; --warn:#f0a132; --bad:#ef5b6a; --chip:#232834;
+    --radius:10px; --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+  header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;background:var(--bg);z-index:20}
+  header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:12px}
+  .wrap{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:calc(100vh - 53px)}
+  .left{border-right:1px solid var(--line);padding:16px;overflow:auto;max-height:calc(100vh - 53px)}
+  .right{padding:16px 20px;overflow:auto;max-height:calc(100vh - 53px)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  label{display:block;font-size:11px;color:var(--muted);margin:8px 0 3px}
+  input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  textarea{resize:vertical;min-height:64px;font-family:var(--mono);font-size:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  button{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:13px;
+    cursor:pointer;font-weight:500}
+  button:hover{background:var(--accent2)}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  button.ghost:hover{background:var(--panel2)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px;user-select:none}
+  details[open] summary{margin-bottom:8px}
+
+  /* dropzone */
+  #drop{border:2px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
+    transition:.15s;cursor:pointer;background:var(--panel)}
+  #drop.hot{border-color:var(--accent);background:#172033;color:var(--text)}
+  #drop b{color:var(--text)}
+  .files{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+  .file{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;padding:7px 10px;font-size:12px}
+  .file .name{font-family:var(--mono);color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--chip);white-space:nowrap}
+  .badge.match{background:#12351f;color:var(--ok);border:1px solid #1c5130}
+  .badge.nomatch{background:#3a1e22;color:var(--bad);border:1px solid #612a30}
+  .badge.exp{background:#3a2a12;color:var(--warn);border:1px solid #6b4a1c}
+  .badge.expired{background:#3a1e22;color:var(--bad);border:1px solid #612a30}
+  .badge.cls{background:#12293a;color:#7cc4ff;border:1px solid #1c4763}
+  .badge.named{background:#26221a;color:#d9b98a;border:1px solid #4a3f2c}
+  .badge.issue{background:#16223a;color:#8fb6ff;border:1px solid #2b3f66}
+  .clsedit{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+  .clsedit input{width:120px;padding:3px 6px;font-size:12px;background:var(--panel2);border:1px solid #1c4763;color:#7cc4ff;border-radius:5px}
+  .file .x{cursor:pointer;color:var(--muted);padding:0 4px}
+  .file .x:hover{color:var(--bad)}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .tab{padding:8px 14px;border:1px solid var(--line);border-radius:8px;cursor:pointer;color:var(--muted);
+    background:var(--panel);font-size:13px}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+  /* preview */
+  .preview{background:#fff;color:#111;border-radius:var(--radius);padding:26px 30px;font-size:13px;
+    box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  .preview h3{margin:0 0 4px;font-size:15px}
+  .preview .subject{font-weight:700;margin-bottom:14px}
+  .preview .hdr{font-weight:700;margin-bottom:8px;text-decoration:underline}
+  .preview table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+  .preview th,.preview td{border:1px solid #bbb;padding:5px 7px;text-align:left;vertical-align:top}
+  .preview th{background:#f0f2f5;font-weight:600}
+  .preview ul{margin:8px 0;padding-left:20px}
+  .preview li{margin:3px 0}
+  .preview .idline{margin:2px 0;font-weight:600}
+  .preview .note{background:#fff6d8;border:1px solid #e5cf7a;padding:6px 9px;border-radius:6px;margin:10px 0;font-size:12px}
+  .preview .pending{background:#fdecec;border:1px solid #e2a3a3;color:#8f2b34;padding:8px 11px;border-radius:6px;margin:0 0 14px;font-size:12px}
+  .preview .pending b{color:#8f2b34}
+  .preview .yes{color:#137a3f;font-weight:700}
+  .preview .no{color:#b23b46}
+  .preview .exp{color:#a86a12}
+  .preview .cls{color:#1a6fb0;font-weight:600}
+  .preview .iss{color:#3a6fd8;font-weight:600}
+  .miss{color:var(--muted);font-size:12px;margin-top:6px}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px;flex-wrap:wrap}
+  .hint{color:var(--muted);font-size:12px;margin:6px 0 0}
+  .abbrev-row{display:grid;grid-template-columns:90px 1fr 24px;gap:6px;margin-bottom:5px;align-items:center}
+  .abbrev-row input{padding:5px 7px;font-size:12px}
+  .small{font-size:11px;color:var(--muted)}
+  .flag{background:#3a1e22;border:1px solid #612a30;color:#ff9aa4;padding:8px 10px;border-radius:8px;font-size:12px;margin-top:8px}
+  .softnote{background:#1e222b;border:1px solid var(--line);color:var(--muted);padding:8px 10px;border-radius:8px;font-size:12px;margin-top:8px}
+  .softnote b{color:#d9b98a}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:#222836;
+    border:1px solid var(--line);color:var(--text);padding:10px 16px;border-radius:8px;opacity:0;pointer-events:none;
+    transition:.2s;z-index:50;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Submission Builder</h1>
+  <span class="sub">Drive Personnel · drag compliance PDFs → auto-fill submission templates</span>
+</header>
+
+<div class="wrap">
+  <!-- LEFT: inputs -->
+  <div class="left">
+    <div class="card">
+      <h2>Person / CRM details</h2>
+      <details>
+        <summary>Paste from CRM (auto-fill)</summary>
+        <textarea id="crmPaste" placeholder="Paste candidate block from CRM here, e.g.&#10;First Name: Shep&#10;Surname: Froggatt&#10;Mobile: 0400 000 000&#10;Email: shep@example.com&#10;DOB: 12/03/1988"></textarea>
+        <div class="row" style="margin-top:6px"><button class="ghost" onclick="parseCRM()">Parse into form</button></div>
+      </details>
+
+      <div class="grid2">
+        <div><label>Position / Role</label><input id="f_role" oninput="render()"></div>
+        <div><label>Default Trade (Karridale)</label><input id="f_defaultTrade" oninput="render()"></div>
+      </div>
+      <div class="grid2">
+        <div><label>First Name</label><input id="f_firstName" oninput="render()"></div>
+        <div><label>Surname</label><input id="f_lastName" oninput="render()"></div>
+      </div>
+      <div class="grid3">
+        <div><label>Gender</label><input id="f_gender" oninput="render()"></div>
+        <div><label>D.O.B</label><input id="f_dob" placeholder="dd/mm/yyyy" oninput="render()"></div>
+        <div><label>Mobile</label><input id="f_mobile" oninput="render()"></div>
+      </div>
+      <div><label>Email</label><input id="f_email" oninput="render()"></div>
+      <div class="grid2">
+        <div><label>Street</label><input id="f_street" oninput="render()"></div>
+        <div><label>Town / Suburb</label><input id="f_town" oninput="render()"></div>
+      </div>
+      <div class="grid2">
+        <div><label>State</label><input id="f_state" oninput="render()"></div>
+        <div><label>Postcode</label><input id="f_postcode" oninput="render()"></div>
+      </div>
+      <div class="grid3">
+        <div><label>NOK Full Name</label><input id="f_nokName" oninput="render()"></div>
+        <div><label>NOK Relationship</label><input id="f_nokRel" oninput="render()"></div>
+        <div><label>NOK Contact</label><input id="f_nokContact" oninput="render()"></div>
+      </div>
+      <details style="margin-top:8px">
+        <summary>MAMMOET / ID fields</summary>
+        <div class="grid2">
+          <div><label>MAMMOET variant</label><select id="f_mammoetRole" onchange="render()"><option>Rigger</option><option>Crane Operator</option></select></div>
+          <div><label>Aboriginal / TSI</label><input id="f_atsi" oninput="render()"></div>
+        </div>
+        <div class="grid2">
+          <div><label>Employee #</label><input id="f_employeeNo" oninput="render()"></div>
+          <div><label>Date first available</label><input id="f_dateAvailable" oninput="render()"></div>
+        </div>
+        <div><label>Sites inducted / known IDs</label><input id="f_sitesInducted" oninput="render()"></div>
+        <div><label>Years of experience</label><input id="f_yearsExp" oninput="render()"></div>
+        <div class="grid2">
+          <div><label>BHP ERMS ID</label><input id="f_bhpErms" oninput="render()"></div>
+          <div><label>FMG SAP #</label><input id="f_fmgSap" oninput="render()"></div>
+        </div>
+        <div class="grid2">
+          <div><label>RTIO SAP #</label><input id="f_rtioSap" oninput="render()"></div>
+          <div><label>RH</label><input id="f_rh" oninput="render()"></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>Abbreviation map</h2>
+      <p class="small">Filename code → compliance name. Both fields are free text. Codes not listed here still appear on the submission by their filename (e.g. inductions like RTIO IOE).</p>
+      <div id="abbrevList"></div>
+      <div class="row" style="margin-top:8px"><button class="ghost" onclick="addAbbrev()">+ Add code</button></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: dropzone + tabs + preview -->
+  <div class="right">
+    <div class="card">
+      <h2>Compliance files (single person)</h2>
+      <div id="drop">Drag PDFs or licence photos here &nbsp;·&nbsp; or <b>click to browse</b>
+        <input type="file" id="fileInput" multiple accept=".pdf,image/*" style="display:none">
+      </div>
+      <div class="files" id="fileList"></div>
+      <div id="flagBox"></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabs" id="tabs"></div>
+      <div class="row">
+        <button class="ghost" onclick="fillName()">Use name from files</button>
+        <button class="ghost" onclick="copySubject()">📋 Copy subject</button>
+        <button class="ghost" onclick="copyForOutlook()">📋 Copy body</button>
+        <button class="ghost" onclick="draftOutlook()">✉ Draft in Outlook</button>
+        <button onclick="downloadDocx()">⬇ Download .docx</button>
+      </div>
+    </div>
+
+    <div id="previewHost"></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- canonical compliance library ---------------- */
+const LIB = {
+  resume:{label:"Resume / CV"}, police:{label:"National Police Clearance (NPC)"},
+  white_card:{label:"Construction Card / White Card"}, passport:{label:"Passport"},
+  birth_cert:{label:"Birth Certificate"}, photo:{label:"Photo"}, photo_id:{label:"Photo ID"},
+  voc:{label:"Verification of Competency"}, dl_c:{label:"Driver's Licence"},
+  dl_hr:{label:"Driver's Licence"}, dl_mc:{label:"Driver's Licence"}, dl_check:{label:"DL Check"},
+  wah:{label:"Work at Heights"}, hrwl:{label:"High Risk Work Licence"}, hrwl_check:{label:"HRWL Check"},
+  cse:{label:"Confined Space Entry"}, gta:{label:"Gas Test Atmosphere"}, basic_fire:{label:"Basic Fire"},
+  first_aid:{label:"First Aid"}, cpr:{label:"CPR"}, noa:{label:"Notice of Assessment"}, soa:{label:"Statement of Attainment"},
+  msic:{label:"MSIC"}, pem:{label:"Pre-Medical Exam (PEM)"}, cdm:{label:"Commercial Drivers Medical"},
+  das:{label:"Drug & Alcohol Screening"}, cor:{label:"Chain of Responsibility"},
+  fatigue:{label:"Fatigue Management"}, induction:{label:"Induction Cards"}
+};
+
+/* editable abbreviation -> canonical key (seeded from screenshot + templates) */
+let ABBREV = {
+  "CV":"resume","RESUME":"resume",
+  "HRWL":"hrwl","HRWLCHECK":"hrwl_check",
+  "MDL":"dl_c","DL":"dl_c","DLC":"dl_c","DLHR":"dl_hr","DLMC":"dl_mc","HR":"dl_hr","MC":"dl_mc","DLCHECK":"dl_check",
+  "CWC":"white_card","WC":"white_card","WHITECARD":"white_card","CONSTRUCTIONCARD":"white_card",
+  "WAH":"wah","CSE":"cse","GTA":"gta","BF":"basic_fire","BASICFIRE":"basic_fire",
+  "FA":"first_aid","CPR":"cpr",
+  "MSIC":"msic","NPC":"police","POLICE":"police","PC":"police",
+  "PEM":"pem","CDM":"cdm","DAS":"das","LABDAS":"das",
+  "PASSPORT":"passport","PP":"passport","BC":"birth_cert","BIRTHCERT":"birth_cert",
+  "PHOTO":"photo","PIC":"photo","PHOTOID":"photo_id",
+  "NOA":"noa","SOA":"soa","VOC":"voc","COR":"cor","FM":"fatigue","FATIGUE":"fatigue"
+};
+
+/* ---------------- template definitions ---------------- */
+// statusMode: checklist | attach | attached_tbc
+const TEMPLATES = {
+  drive:{
+    name:"Drive FIFO",
+    subject:m=>`Drive FIFO Submission – ${fullName()} – ${val('role')||'*Position*'}`,
+    statusMode:"checklist", dynamicAttached:true,
+    personalCols:[["Position","role"],["First Name","firstName"],["Last Name","lastName"],["Mobile","mobile"],
+      ["Street","street"],["Town","town"],["State","state"],["Postcode","postcode"],["Email","email"],["DOB","dob"],
+      ["NOK Full Name","nokName"],["NOK Relationship","nokRel"],["NOK Contact","nokContact"]],
+    ids:[["BHP ERMS ID","bhpErms"],["FMG SAP #","fmgSap"],["RTIO SAP #","rtioSap"],["RH","rh"]],
+    items:[["Resume",["resume"]],["HRWL",["hrwl"]],["MDL",["dl_c","dl_hr","dl_mc"]],
+      ["Construction Card",["white_card"]],["Work at Heights",["wah"]],["Photo",["photo"]]]
+  },
+  drive_local:{
+    name:"Drive LOCAL",
+    header:"[LOCAL] Submission for CO / Rigger / Dogman",
+    subject:m=>`DRIVE Submission – ${fullName()} – ${val('role')||'*Position*'}`,
+    statusMode:"checklist", dynamicAttached:true,
+    personalCols:[["Position","role"],["First Name","firstName"],["Last Name","lastName"],["Mobile","mobile"],
+      ["Street","street"],["Town","town"],["State","state"],["Postcode","postcode"],["Email","email"],["DOB","dob"],
+      ["NOK Full Name","nokName"],["NOK Relationship","nokRel"],["NOK Contact","nokContact"]],
+    items:[["Resume",["resume"]],["HRWL",["hrwl"]],["MDL",["dl_c","dl_hr","dl_mc"]],
+      ["Construction Card",["white_card"]],["Work at Heights",["wah"]],["Photo",["photo"]]]
+  },
+  mammoet:{
+    name:"MAMMOET",
+    subject:m=>`Submission – ${val('role')||'*Position*'} – ${fullName()} – Drive Personnel`,
+    to:"Recruitment.Australia@mammoet.com",
+    statusMode:"attached_tbc",
+    personalCols:[["Sites inducted","sitesInducted"],["Position","role"],["First Name","firstName"],["Surname","lastName"],
+      ["D/O/B","dob"],["Mobile","mobile"],["Employee # / Email","email"],["Aboriginal/TSI","atsi"],
+      ["Gender","gender"],["Date first available","dateAvailable"]],
+    itemsByRole:{
+      "Rigger":[["Resume",["resume"],""],["Police Clearance",["police"],"1 year"],["White Card",["white_card"],""],
+        ["Passport or Birth Certificate",["passport","birth_cert"],""],["Photograph",["photo"],""],
+        ["Verification of Competency (VOC)",["voc"],"3 years"],["Driver's Licence",["dl_c","dl_hr","dl_mc"],"1-5 years"],
+        ["DL check",["dl_check"],""],["Working at Heights (WAH)",["wah"],"2 years"],
+        ["High Risk Work Licence (HRWL)",["hrwl"],"5 years"],["HRWL check",["hrwl_check"],""],
+        ["Pre-employment Medical",["pem"],"1 year"],["Drug & Alcohol Test (Lab)",["das"],"28 days"]],
+      "Crane Operator":[["Resume",["resume"],""],["Police Clearance",["police"],"1 year"],["White Card",["white_card"],""],
+        ["Passport or Birth Certificate",["passport","birth_cert"],""],["Photograph",["photo"],""],
+        ["Verification of Competency (VOC)",["voc"],"3 years"],["Driver's Licence",["dl_c","dl_hr","dl_mc"],"1-5 years"],
+        ["DL check",["dl_check"],""],["Working at Heights (WAH)",["wah"],"2 years"],
+        ["High Risk Work Licence (HRWL)",["hrwl"],"5 years"],["HRWL check",["hrwl_check"],""],
+        ["Fatigue Management (Safeline)",["fatigue"],""],["Chain of Responsibility (Aveling)",["cor"],"3 years"],
+        ["Commercial Drivers Medical",["cdm"],""],["Pre-employment Medical",["pem"],"1 year"],
+        ["Drug & Alcohol Test (Lab)",["das"],"28 days"]]
+    }
+  },
+  karridale:{
+    name:"KARRIDALE",
+    subject:m=>`Karridale Group submission – ${fullName()}`,
+    statusMode:"checklist",
+    items:[["Photo",["photo"]],["Photo ID",["photo_id"]],["CWC",["white_card"]],["HRWL",["hrwl"]]],
+    candidateCols:[["Default Trade","defaultTrade"],["First Name","firstName"],["Surname","lastName"],
+      ["Gender","gender"],["Email","email"],["Date of Birth","dob"],["Mobile","mobile"],
+      ["Address","__address"],["Emergency Contact Info","__emergency"]]
+  },
+  monos:{
+    name:"MONOS HL",
+    subject:m=>`MONOS HL – DRIVE Submission – ${fullName()} – ${val('role')||'*Position*'}`,
+    statusMode:"attach",
+    to:"hlplanning@monadel.com.au",
+    cc:"STatterson@monadel.com.au;PxMoss@monadel.com.au",
+    note:"We only want to send them: CV, MDL, HRWL, White Card",
+    sendTo:"hlplanning@monadel.com.au (Steven Tatterson, Peter Moss)",
+    items:[["CV",["resume"],"Attach"],["Pre-Employment Medical",["pem"],"On File"],
+      ["MDL",["dl_c","dl_hr","dl_mc"],"Attach"],["HRWL",["hrwl"],"Attach"],
+      ["VOC",["voc"],"On File"],["White Card",["white_card"],"Attach"]]
+  }
+};
+
+/* ---------------- state ---------------- */
+let FILES = [];         // {name, keys:[canonical], compliance, expiry:Date|null, expired:bool, raw}
+let activeTab = "drive";
+
+/* ---------------- helpers ---------------- */
+const $=id=>document.getElementById(id);
+const val=k=>($('f_'+k)?$('f_'+k).value.trim():"");
+function fullName(){const n=(val('firstName')+" "+val('lastName')).trim();return n||"*Name*";}
+function addressStr(){return [val('street'),val('town'),val('state'),val('postcode')].filter(Boolean).join(", ");}
+function emergencyStr(){return [val('nokName'),val('nokRel'),val('nokContact')].filter(Boolean).join(" · ");}
+function norm(s){return s.toUpperCase().replace(/[^A-Z0-9]/g,"");}
+function fmtDate(d){if(!d)return "";const p=n=>String(n).padStart(2,'0');return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`;}
+
+/* ---------------- PDF reading: HRWL classes + DL class ---------------- */
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+
+// Australian HRWL class codes (WorkSafe)
+const HRWL_CODES=["SB","SI","SA","DG","RB","RI","RA","CT","CS","CB","CP","CV","CN",
+  "C2","C6","C1","C0","C100","DC","HM","HP","PB","WP","LF","LO","BB","BI","BA","TO","ES"];
+// Driver licence classes — display set (heaviest first) and routing rank
+const DL_DISPLAY=["MC","HC","HR","MR","LR","C","R","RE"];
+const DL_RANK=["MC","HC","HR","MR","LR","C"];
+// which MAMMOET DL row a detected class belongs to
+const DL_CLASS_TO_KEY={C:"dl_c",LR:"dl_c",MR:"dl_hr",HR:"dl_hr",HC:"dl_mc",MC:"dl_mc"};
+
+async function extractPdfText(file){
+  try{
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let text="";
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const c=await page.getTextContent();
+      text+=" "+c.items.map(it=>it.str).join(" ");
+    }
+    return text;
+  }catch(e){ return ""; }
+}
+// render a source (PDF first page or image file) to a canvas, then OCR it
+async function ocrText(file){
+  if(!window.Tesseract) return "";
+  try{
+    let src;
+    if(/\.pdf$/i.test(file.name)){
+      const buf=await file.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      const page=await pdf.getPage(1);
+      const vp=page.getViewport({scale:2});
+      const canvas=document.createElement("canvas");
+      canvas.width=vp.width; canvas.height=vp.height;
+      await page.render({canvasContext:canvas.getContext("2d"),viewport:vp}).promise;
+      src=canvas;
+    }else{ src=file; }
+    const {data}=await Tesseract.recognize(src,"eng");
+    return data.text||"";
+  }catch(e){ return ""; }
+}
+function tokensOf(text){ return new Set(text.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/)); }
+// classes sit right after a "CLASS"/"CLASSES" label on the card — scope search there to avoid matching stray words
+function classRegion(text){
+  const up=(text||"").toUpperCase();
+  const m=up.match(/CLASS(?:ES)?\s*:?\s*([\s\S]{0,40})/);
+  if(m){
+    let seg=m[1].split(/\n/)[0];
+    seg=seg.split(/\b(?:GRANTED|EXPIRES?|EXPIRY|DOB|DATE|LICENCE|LICENSE|NUMBER|NO)\b/)[0];
+    return seg;
+  }
+  return up;
+}
+function findHrwlClasses(text){ const tk=tokensOf(classRegion(text)); return HRWL_CODES.filter(c=>tk.has(c)); }
+function findDlClasses(text){ const tk=tokensOf(classRegion(text)); return DL_DISPLAY.filter(c=>tk.has(c)); }
+function primaryDl(dls){ return DL_RANK.find(c=>dls.includes(c))||dls[0]||""; }
+
+/* read a HRWL/DL file (PDF text first, OCR fallback), populate classes, then re-render */
+async function enrichFile(entry, file){
+  const code=norm((entry.compliance.split(/\s+/)[0])||"");
+  const isHrwl = entry.keys.includes("hrwl") || code==="HRWL";
+  const isDl = entry.keys.some(k=>k.startsWith("dl_")) || code==="DL" || code==="MDL";
+  if(!isHrwl && !isDl) return;
+  entry.reading=true; renderFiles();
+  let text=""; if(/\.pdf$/i.test(file.name)) text=await extractPdfText(file);
+  let hrwl = isHrwl ? findHrwlClasses(text) : [];
+  let dls  = isDl  ? findDlClasses(text)  : [];
+  // OCR fallback for scans / photos / image files
+  if((isHrwl && !hrwl.length) || (isDl && !dls.length)){
+    entry.ocr=true; renderFiles();
+    const otext=await ocrText(file);
+    if(isHrwl && !hrwl.length) hrwl=findHrwlClasses(otext);
+    if(isDl && !dls.length) dls=findDlClasses(otext);
+    entry.ocr=false;
+  }
+  if(isHrwl) entry.hrwlClasses=hrwl;
+  if(isDl){ entry.dlClasses=dls; entry.dlClass=primaryDl(dls);
+    if(entry.dlClass) entry.keys=[DL_CLASS_TO_KEY[entry.dlClass]||"dl_c"]; }
+  entry.reading=false;
+  renderFiles(); render();
+}
+// manual corrections from the editable class fields
+function setHrwlClasses(i,str){ FILES[i].hrwlClasses=str.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/).filter(Boolean); renderFiles(); render(); }
+function setDlClasses(i,str){ const a=str.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/).filter(Boolean);
+  FILES[i].dlClasses=a; FILES[i].dlClass=primaryDl(a);
+  if(FILES[i].dlClass) FILES[i].keys=[DL_CLASS_TO_KEY[FILES[i].dlClass]||"dl_c"]; renderFiles(); render(); }
+
+/* ---------------- filename parser ---------------- */
+function parseName(filename){
+  let base=filename.replace(/\.[^.]+$/,"").trim();
+  let tokens=base.split(/\s+/);
+  let expiry=null,dateKind="issue",expired=false;
+  // trailing 8-digit date DDMMYYYY
+  if(tokens.length && /^\d{8}$/.test(tokens[tokens.length-1])){
+    const t=tokens.pop();
+    const dd=+t.slice(0,2),mm=+t.slice(2,4),yy=+t.slice(4,8);
+    const d=new Date(yy,mm-1,dd);
+    if(d.getDate()===dd&&d.getMonth()===mm-1) expiry=d;
+    // "EXP" before the date => expiry date; no EXP => issue date
+    if(tokens.length && /^EXP$/i.test(tokens[tokens.length-1])){ tokens.pop(); dateKind="expiry"; }
+    if(expiry && dateKind==="expiry") expired = expiry<new Date();
+  } else if(tokens.length && /^EXP$/i.test(tokens[tokens.length-1])){ tokens.pop(); dateKind="expiry"; }
+  // first two tokens = name (single-person, form is authoritative; used only to auto-fill)
+  const first=tokens.shift()||"", last=tokens.shift()||"";
+  const compliance=tokens.join(" ").trim();
+  // match compliance -> canonical key
+  let keys=[];
+  const nk=norm(compliance);
+  if(ABBREV[nk]) keys=[ABBREV[nk]];
+  else{
+    const firstTok=norm(compliance.split(/\s+/)[0]||"");
+    if(ABBREV[firstTok]) keys=[ABBREV[firstTok]];
+  }
+  // VOC sub-type: "VOC EWP" -> EWP (competency the VOC is for)
+  let vocType="";
+  if(keys[0]==="voc"){ vocType=compliance.replace(/^VOC\s*/i,"").trim().toUpperCase(); }
+  const mapped=keys.length>0;
+  let displayName;
+  if(mapped) displayName = keys[0]==="voc" && vocType ? `${LIB.voc.label} – ${vocType}` : LIB[keys[0]].label;
+  else displayName = compliance || "(unnamed)";
+  return {name:filename,first,last,compliance,keys,vocType,mapped,displayName,expiry,dateKind,expired,hrwlClasses:[],dlClasses:[],dlClass:"",reading:false,ocr:false};
+}
+
+/* ---------------- file intake ---------------- */
+function addFiles(list){
+  for(const f of list){
+    if(FILES.some(x=>x.name===f.name)) continue;
+    const entry=parseName(f.name);
+    FILES.push(entry);
+    if(window.pdfjsLib && /\.(pdf|png|jpe?g|webp)$/i.test(f.name)) enrichFile(entry,f);
+  }
+  fillName(); // pull the candidate's name from the files so the subject isn't a placeholder
+  renderFiles(); render();
+}
+function removeFile(i){FILES.splice(i,1);renderFiles();render();}
+
+function renderFiles(){
+  const host=$('fileList'); host.innerHTML="";
+  FILES.forEach((f,i)=>{
+    const div=document.createElement('div'); div.className="file";
+    let matchBadge = f.mapped
+      ? `<span class="badge match">${f.displayName}</span>`
+      : `<span class="badge named">${f.displayName}</span>`;
+    const isHrwl=f.keys.includes("hrwl")||norm(f.compliance.split(/\s+/)[0]||"")==="HRWL";
+    const isDl=f.keys.some(k=>k.startsWith("dl_"))||["DL","MDL"].includes(norm(f.compliance.split(/\s+/)[0]||""));
+    let detail="";
+    if(f.reading) detail=`<span class="badge">${f.ocr?'reading photo (OCR)…':'reading PDF…'}</span>`;
+    else if(isHrwl) detail=`<span class="clsedit">classes <input value="${f.hrwlClasses.join(' ')}" placeholder="e.g. LF WP" onchange="setHrwlClasses(${i},this.value)"></span>`;
+    else if(isDl) detail=`<span class="clsedit">class <input value="${f.dlClasses.join(' ')}" placeholder="e.g. HR" onchange="setDlClasses(${i},this.value)"></span>`;
+    else if(f.expiry){
+      const k=f.dateKind==="expiry";
+      detail=`<span class="badge ${k?(f.expired?'expired':'exp'):'issue'}">${k?(f.expired?'EXPIRED ':'exp '):'issued '}${fmtDate(f.expiry)}</span>`;
+    }
+    div.innerHTML=`<span class="name">${f.name}</span>${matchBadge}${detail}<span class="x" onclick="removeFile(${i})">✕</span>`;
+    host.appendChild(div);
+  });
+  const named=[...new Set(FILES.filter(f=>!f.mapped).map(f=>f.compliance).filter(Boolean))];
+  $('flagBox').innerHTML = named.length
+    ? `<div class="softnote">Shown by filename (no standard code matched): <b>${named.join(", ")}</b></div>` : "";
+}
+
+function titleCase(s){ return s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()); }
+function fillName(){
+  const withName=FILES.find(f=>f.first);
+  if(!withName) return;
+  if(!val('firstName')) $('f_firstName').value=titleCase(withName.first);
+  if(!val('lastName')) $('f_lastName').value=titleCase(withName.last);
+  render();
+}
+
+/* which canonical keys are present, with best expiry + detected classes */
+function presentMap(){
+  const map={};
+  for(const f of FILES){
+    for(const k of f.keys){
+      if(!map[k]) map[k]={expiry:null,dateKind:"issue",expired:false,hrwlClasses:[],dlClass:"",dlClasses:[],vocTypes:[]};
+      if(f.expiry&&(!map[k].expiry||f.expiry>map[k].expiry)){map[k].expiry=f.expiry;map[k].expired=f.expired;map[k].dateKind=f.dateKind;}
+      if(k==="hrwl"&&f.hrwlClasses) f.hrwlClasses.forEach(c=>{if(!map[k].hrwlClasses.includes(c))map[k].hrwlClasses.push(c);});
+      if(k.startsWith("dl_")&&f.dlClass) map[k].dlClass=f.dlClass;
+      if(k.startsWith("dl_")&&f.dlClasses&&f.dlClasses.length) map[k].dlClasses=f.dlClasses;
+      if(k==="voc"&&f.vocType&&!map[k].vocTypes.includes(f.vocType)) map[k].vocTypes.push(f.vocType);
+    }
+  }
+  return map;
+}
+
+/* ---------------- build a render model per template ---------------- */
+function buildModel(tid){
+  const t=TEMPLATES[tid]; const pm=presentMap();
+  const m={name:t.name,subject:t.subject(),header:t.header,statusMode:t.statusMode,dynamicAttached:t.dynamicAttached,note:t.note,sendTo:t.sendTo,to:t.to,cc:t.cc,
+    personalCols:t.personalCols,ids:t.ids,candidateCols:t.candidateCols,rows:[]};
+  let items = t.items;
+  if(tid==="mammoet") items = t.itemsByRole[val('mammoetRole')||"Rigger"].map(x=>[x[0],x[1],x[2]]);
+  m.roleVariant = tid==="mammoet" ? (val('mammoetRole')||"Rigger") : null;
+  for(const it of items){
+    const [label,keys,extra]=it;
+    let present=false,expiry=null,dateKind="issue",expired=false,hrwlClasses=[],dlClasses=[],dlClass="",vocTypes=[];
+    for(const k of keys){ if(pm[k]){
+      present=true;
+      if(pm[k].expiry&&(!expiry||pm[k].expiry>expiry)){expiry=pm[k].expiry;expired=pm[k].expired;dateKind=pm[k].dateKind;}
+      if(pm[k].hrwlClasses&&pm[k].hrwlClasses.length) hrwlClasses=pm[k].hrwlClasses;
+      if(pm[k].dlClass) dlClass=pm[k].dlClass;
+      if(pm[k].dlClasses&&pm[k].dlClasses.length) dlClasses=pm[k].dlClasses;
+      if(pm[k].vocTypes&&pm[k].vocTypes.length) vocTypes=pm[k].vocTypes;
+    }}
+    // detail shown instead of a date: HRWL classes, DL class(es), or VOC competencies
+    let detail="",detailKind="expiry";
+    const isHrwl=keys.includes("hrwl"), isDl=keys.some(k=>k.startsWith("dl_")), isVoc=keys.includes("voc");
+    if(present&&isHrwl){ detail=hrwlClasses.join(", "); detailKind="class"; }
+    else if(present&&isDl){ detail=(dlClasses.length?dlClasses:[dlClass]).filter(Boolean).join(", "); detailKind="class"; }
+    else if(present&&isVoc&&vocTypes.length){ detail=vocTypes.join(", "); detailKind="voc"; }
+    else if(expiry){ detail=fmtDate(expiry); detailKind = dateKind==="expiry" ? "expiry" : "issue"; }
+    m.rows.push({label,present,expiry,expired,extra:extra||"",detail,detailKind,isHrwl,isDl});
+  }
+  // one line per dropped file, ordered by the template's hierarchy (image priority); extras appended in drop order
+  const keyRank={};
+  items.forEach((it,idx)=> it[1].forEach(k=>{ if(!(k in keyRank)) keyRank[k]=idx; }));
+  m.attachedFiles=FILES.map((f,fi)=>{
+    const isHrwl=f.keys.includes("hrwl"), isDl=f.keys.some(k=>k.startsWith("dl_"));
+    let detail="",detailKind="expiry";
+    if(isHrwl){ detail=(f.hrwlClasses||[]).join(", "); detailKind="class"; }
+    else if(isDl){ detail=(f.dlClasses&&f.dlClasses.length?f.dlClasses:[f.dlClass]).filter(Boolean).join(", "); detailKind="class"; }
+    else if(f.expiry){ detail=fmtDate(f.expiry); detailKind = f.dateKind==="expiry" ? "expiry" : "issue"; }
+    const rank=Math.min(Infinity,...f.keys.map(k=> k in keyRank?keyRank[k]:Infinity));
+    return {label:f.displayName,detail,detailKind,isHrwl,isDl,expired:f.expired,rank,order:fi};
+  }).sort((a,b)=> a.rank-b.rank || a.order-b.order);
+  return m;
+}
+
+/* ---------------- preview rendering ---------------- */
+// inline styles so borders survive a paste into Outlook/Word (they strip CSS classes)
+const TBL='border="1" cellspacing="0" style="border-collapse:collapse;width:100%;margin:10px 0;font-size:12px"';
+const TH ='style="border:1px solid #999;padding:5px 7px;text-align:left;background:#f0f2f5;font-weight:600"';
+const TD ='style="border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top"';
+function cellVal(field){
+  if(field==="__address") return addressStr();
+  if(field==="__emergency") return emergencyStr();
+  return val(field);
+}
+function personalTable(cols){
+  let head="<tr>"+cols.map(c=>`<th ${TH}>${c[0]}</th>`).join("")+"</tr>";
+  let body="<tr>"+cols.map(c=>`<td ${TD}>${cellVal(c[1])||"&nbsp;"}</td>`).join("")+"</tr>";
+  return `<table ${TBL}>${head}${body}</table>`;
+}
+function statusText(m,r){
+  if(m.statusMode==="checklist") return r.present?`<span class="yes">✔ Attached</span>`:`<span class="no">☐</span>`;
+  if(m.statusMode==="attach"){ if(r.extra==="On File") return "On File"; return r.present?`<span class="yes">Attached ✔</span>`:`<span class="no">Attach</span>`;}
+  if(m.statusMode==="attached_tbc") return r.present?`<span class="yes">Attached</span>`:`<span class="no">TBC</span>`;
+  return "";
+}
+// inline detail: classes for HRWL, class for DL, expiry otherwise
+function detailInline(r){
+  if(!r.detail) return "";
+  if(r.detailKind==="class") return ` <span class="cls">(${r.isHrwl?'classes':'class'}: ${r.detail})</span>`;
+  if(r.detailKind==="voc") return ` <span class="cls">(${r.detail})</span>`;
+  if(r.detailKind==="issue") return ` <span class="iss">(issued ${r.detail})</span>`;
+  return ` <span class="exp">(exp ${r.detail}${r.expired?' – EXPIRED':''})</span>`;
+}
+function detailCell(r){
+  if(!r.detail) return "";
+  if(r.detailKind==="class"||r.detailKind==="voc") return r.detail;
+  if(r.detailKind==="issue") return "issued "+r.detail;
+  return r.detail+(r.expired?' ⚠':'');
+}
+
+function renderPreview(){
+  const m=buildModel(activeTab);
+  const missing=m.rows.filter(r=>!r.present).map(r=>r.label);
+
+  let h=`<div class="preview">`;
+  if(m.header) h+=`<div class="hdr">${m.header}</div>`;
+  h+=`<div class="subject">Subject: ${m.subject}</div>`;
+  if(m.roleVariant) h+=`<h3>${m.roleVariant} Submission</h3>`;
+
+  // 1) Not yet attached — at the top of the template, above personal details
+  if(missing.length) h+=`<div class="pending"><b>Not yet attached:</b> ${missing.join(", ")}</div>`;
+
+  if(m.personalCols) h+=`<b>Personal Details</b>${personalTable(m.personalCols)}`;
+  if(m.ids) h+=m.ids.map(i=>`<div class="idline">${i[0]}: ${val(i[1])||"—"}</div>`).join("");
+
+  // compliance section
+  if(m.statusMode==="checklist"){
+    if(m.dynamicAttached){
+      // one line per dropped file (VOCs, inductions, etc. show by name)
+      h+=`<b>See attached for your records:</b>`;
+      h+= m.attachedFiles.length
+        ? `<ul>`+m.attachedFiles.map(r=>`<li>${r.label}${detailInline(r)}</li>`).join("")+`</ul>`
+        : `<div class="miss" style="color:#b23b46">No compliance files attached yet.</div>`;
+    }else{
+      h+=`<b>Compliances</b><ul>`+m.rows.map(r=>
+        `<li>${r.label}: ${statusText(m,r)}${detailInline(r)}</li>`).join("")+`</ul>`;
+    }
+  }else if(m.statusMode==="attach"){
+    h+=`<table ${TBL}><tr><th ${TH}>Compliance Type</th><th ${TH}>Status</th></tr>`+m.rows.map(r=>
+      `<tr><td ${TD}>${r.label}</td><td ${TD}>${statusText(m,r)}${detailInline(r)}</td></tr>`).join("")+`</table>`;
+  }else if(m.statusMode==="attached_tbc"){
+    h+=`<table ${TBL}><tr><th ${TH}>Requirement</th><th ${TH}>Validity</th><th ${TH}>Expiry / Class</th><th ${TH}>Status</th></tr>`+m.rows.map(r=>
+      `<tr><td ${TD}>${r.label}</td><td ${TD}>${r.extra||""}</td><td ${TD}>${detailCell(r)}</td><td ${TD}>${statusText(m,r)}</td></tr>`).join("")+`</table>`;
+  }
+  if(m.candidateCols) h+=`<b>Candidate details</b>${personalTable(m.candidateCols)}`;
+  if(m.note) h+=`<div class="note">** ${m.note}</div>`;
+  if(m.sendTo) h+=`<div class="idline">Send to: ${m.sendTo}</div>`;
+  h+=`</div>`;
+  $('previewHost').innerHTML=h;
+}
+
+/* ---------------- tabs ---------------- */
+function renderTabs(){
+  $('tabs').innerHTML=Object.keys(TEMPLATES).map(k=>
+    `<div class="tab ${k===activeTab?'active':''}" onclick="setTab('${k}')">${TEMPLATES[k].name}</div>`).join("");
+}
+function setTab(k){activeTab=k;renderTabs();renderPreview();}
+
+/* ---------------- abbreviation editor (two text fields: code + name) ---------------- */
+function renderAbbrev(){
+  const host=$('abbrevList'); host.innerHTML="";
+  Object.keys(ABBREV).sort().forEach(code=>{
+    const key=ABBREV[code]; const name=(LIB[key]?LIB[key].label:key).replace(/"/g,'&quot;');
+    const row=document.createElement('div'); row.className="abbrev-row";
+    row.innerHTML=`<input value="${code}" onchange="renameAbbrev('${code}',this.value)" placeholder="CODE">
+      <input value="${name}" onchange="setAbbrevName('${code}',this.value)" placeholder="Compliance name">
+      <span class="x" style="cursor:pointer;color:var(--muted)" onclick="delete ABBREV['${code}'];renderAbbrev();reparse()">✕</span>`;
+    host.appendChild(row);
+  });
+}
+// set the compliance name for a code: reuse an existing type if the name matches, else create a custom one
+function setAbbrevName(code,name){
+  name=name.trim(); if(!name) return;
+  let key=Object.keys(LIB).find(k=>LIB[k].label.toLowerCase()===name.toLowerCase());
+  if(!key){ key="custom_"+norm(name).toLowerCase(); LIB[key]={label:name}; }
+  ABBREV[code]=key; renderAbbrev(); reparse();
+}
+function renameAbbrev(oldc,newc){newc=norm(newc);if(!newc||newc===oldc)return;ABBREV[newc]=ABBREV[oldc];delete ABBREV[oldc];renderAbbrev();reparse();}
+function addAbbrev(){let c="NEW";let i=1;while(ABBREV[c])c="NEW"+(i++);ABBREV[c]=Object.keys(LIB)[0];renderAbbrev();}
+function reparse(){FILES=FILES.map(f=>{
+  const n=parseName(f.name);
+  n.hrwlClasses=f.hrwlClasses||[]; n.dlClasses=f.dlClasses||[]; n.dlClass=f.dlClass||"";
+  if(n.dlClass && n.keys.some(k=>k.startsWith("dl_"))) n.keys=[DL_CLASS_TO_KEY[n.dlClass]||"dl_c"];
+  return n;
+});renderFiles();render();}
+
+/* ---------------- CRM paste parser ---------------- */
+const CRM_LABELS={
+  "firstname":"firstName","first name":"firstName","first":"firstName","given name":"firstName",
+  "surname":"lastName","last name":"lastName","lastname":"lastName","last":"lastName","family name":"lastName",
+  "position":"role","role":"role","trade":"defaultTrade","default trade":"defaultTrade",
+  "gender":"gender","sex":"gender","dob":"dob","d.o.b":"dob","date of birth":"dob",
+  "mobile":"mobile","phone":"mobile","email":"email","e-mail":"email",
+  "street":"street","town":"town","suburb":"town","city":"town","state":"state","postcode":"postcode","post code":"postcode",
+  "address":"__addr","nok":"nokName","next of kin":"nokName","nok name":"nokName","emergency contact":"nokName",
+  "nok relationship":"nokRel","relationship":"nokRel","nok contact":"nokContact","emergency phone":"nokContact",
+  "employee":"employeeNo","employee #":"employeeNo","atsi":"atsi","aboriginal":"atsi",
+  "bhp erms":"bhpErms","fmg sap":"fmgSap","rtio sap":"rtioSap","rh":"rh","years of experience":"yearsExp","experience":"yearsExp"
+};
+function parseCRM(){
+  const txt=$('crmPaste').value;
+  txt.split(/\n+/).forEach(line=>{
+    const mm=line.split(/[:\t]/);
+    if(mm.length<2)return;
+    const key=mm[0].trim().toLowerCase();
+    const value=mm.slice(1).join(":").trim();
+    if(!value)return;
+    let field=CRM_LABELS[key];
+    if(field==="__addr"){ // split full address loosely into street/town
+      const parts=value.split(",").map(s=>s.trim());
+      if(parts[0]&&$('f_street'))$('f_street').value=parts[0];
+      if(parts[1]&&$('f_town'))$('f_town').value=parts[1];
+      if(parts[2]&&$('f_state'))$('f_state').value=parts[2];
+      const pc=value.match(/\b\d{4}\b/); if(pc&&$('f_postcode'))$('f_postcode').value=pc[0];
+      return;
+    }
+    if(field&&$('f_'+field))$('f_'+field).value=value;
+  });
+  render();
+}
+
+/* ---------------- .docx export (active tab) ---------------- */
+async function downloadDocx(){
+  const d=docx; const m=buildModel(activeTab);
+  const P=(text,opt={})=>new d.Paragraph({children:[new d.TextRun({text,bold:opt.bold,size:opt.size||22})],spacing:{after:opt.after??80},heading:opt.heading});
+  const kids=[];
+  if(m.header) kids.push(P(m.header,{bold:true,size:24,after:80}));
+  kids.push(P("Subject: "+m.subject,{bold:true,size:26,after:160}));
+  if(m.roleVariant) kids.push(P(m.roleVariant+" Submission",{bold:true,size:24}));
+
+  // Not yet attached — at the top, above personal details
+  const missingDocx=m.rows.filter(r=>!r.present).map(r=>r.label);
+  if(missingDocx.length) kids.push(P("Not yet attached: "+missingDocx.join(", "),{bold:true,after:120}));
+
+  const mkTable=(headers,rows)=>{
+    const border={style:d.BorderStyle.SINGLE,size:1,color:"999999"};
+    const borders={top:border,bottom:border,left:border,right:border};
+    const hc=headers.map(h=>new d.TableCell({borders,shading:{type:d.ShadingType.CLEAR,fill:"EEEEEE"},
+      children:[new d.Paragraph({children:[new d.TextRun({text:h,bold:true,size:18})]})]}));
+    const trows=[new d.TableRow({children:hc})];
+    rows.forEach(r=>{trows.push(new d.TableRow({children:r.map(c=>new d.TableCell({borders,
+      children:[new d.Paragraph({children:[new d.TextRun({text:String(c||""),size:18})]})]}))}));});
+    return new d.Table({rows:trows,width:{size:100,type:d.WidthType.PERCENTAGE}});
+  };
+
+  if(m.personalCols){kids.push(P("Personal Details",{bold:true}));
+    kids.push(mkTable(m.personalCols.map(c=>c[0]),[m.personalCols.map(c=>cellVal(c[1]))]));kids.push(P("",{after:120}));}
+  if(m.ids) m.ids.forEach(i=>kids.push(P(i[0]+": "+(val(i[1])||"—"),{bold:true,after:40})));
+
+  const st=r=>{ if(m.statusMode==="checklist")return r.present?"Attached":"—";
+    if(m.statusMode==="attach")return r.extra==="On File"?"On File":(r.present?"Attached":"Attach");
+    return r.present?"Attached":"TBC";};
+  const dtl=r=>{ if(!r.detail)return "";
+    if(r.detailKind==="class") return "  ("+(r.isHrwl?"classes":"class")+": "+r.detail+")";
+    if(r.detailKind==="voc") return "  ("+r.detail+")";
+    if(r.detailKind==="issue") return "  (issued "+r.detail+")";
+    return "  (exp "+r.detail+")"; };
+  const dcell=r=>{ if(!r.detail)return "";
+    if(r.detailKind==="class"||r.detailKind==="voc") return r.detail;
+    if(r.detailKind==="issue") return "issued "+r.detail;
+    return r.detail+(r.expired?" ⚠":""); };
+
+  if(m.statusMode==="attached_tbc"){
+    kids.push(P("",{after:60}));
+    kids.push(mkTable(["Requirement","Validity","Expiry / Class","Status"],
+      m.rows.map(r=>[r.label,r.extra,dcell(r),st(r)])));
+  }else if(m.statusMode==="attach"){
+    kids.push(P("",{after:60}));
+    kids.push(mkTable(["Compliance Type","Status"],
+      m.rows.map(r=>[r.label,st(r)+dtl(r)])));
+  }else if(m.dynamicAttached){
+    kids.push(P("See attached for your records:",{bold:true}));
+    if(m.attachedFiles.length) m.attachedFiles.forEach(r=>kids.push(new d.Paragraph({bullet:{level:0},
+      children:[new d.TextRun({text:r.label+dtl(r),size:20})]})));
+    else kids.push(P("No compliance files attached yet.",{size:20}));
+  }else{
+    m.rows.forEach(r=>kids.push(new d.Paragraph({bullet:{level:0},
+      children:[new d.TextRun({text:r.label+": "+st(r)+dtl(r),size:20})]})));
+  }
+  if(m.candidateCols){kids.push(P("Candidate details",{bold:true,after:60}));
+    kids.push(mkTable(m.candidateCols.map(c=>c[0]),[m.candidateCols.map(c=>cellVal(c[1]))]));}
+  if(m.note){kids.push(P("",{after:60}));kids.push(P("** "+m.note,{bold:true}));}
+  if(m.sendTo)kids.push(P("Send to: "+m.sendTo,{bold:true}));
+
+  const doc=new d.Document({sections:[{properties:{page:{size:{width:12240,height:15840}}},children:kids}]});
+  const blob=await d.Packer.toBlob(doc);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${m.name.replace(/\s+/g,'_')}_${(fullName()).replace(/\s+/g,'_')}.docx`;
+  a.click();
+}
+
+/* ---------------- Outlook / Microsoft clipboard ---------------- */
+function toast(msg){
+  let t=$('toast'); if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t);}
+  t.textContent=msg; t.className='show'; clearTimeout(t._h); t._h=setTimeout(()=>t.className='',2800);
+}
+function selectCopy(el){ // reliable rich-HTML copy that pastes formatted into Word/Outlook (works on file://)
+  const r=document.createRange(); r.selectNode(el);
+  const s=getSelection(); s.removeAllRanges(); s.addRange(r);
+  try{document.execCommand('copy');}catch(e){}
+  s.removeAllRanges();
+}
+async function copyRich(node){
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html':new Blob([node.outerHTML],{type:'text/html'}),
+        'text/plain':new Blob([node.innerText],{type:'text/plain'})
+      })]);
+      return;
+    }
+  }catch(e){}
+  let temp=false;
+  if(!document.body.contains(node)){ node.style.position="fixed"; node.style.left="-99999px"; document.body.appendChild(node); temp=true; }
+  selectCopy(node);
+  if(temp) node.remove();
+}
+async function copyPlain(text){
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return; } }catch(e){}
+  const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.left="-99999px";
+  document.body.appendChild(ta); ta.select(); try{document.execCommand("copy");}catch(e){} ta.remove();
+}
+// body = the preview minus the "Subject:" line (subject is pasted separately)
+function bodyNode(){
+  const el=document.querySelector(".preview"); if(!el) return null;
+  const c=el.cloneNode(true); const s=c.querySelector(".subject"); if(s) s.remove(); return c;
+}
+async function copySubject(){
+  const s=buildModel(activeTab).subject;
+  await copyPlain(s);
+  toast("Subject copied — paste into the subject line");
+}
+async function copyForOutlook(){
+  const n=bodyNode();
+  if(!n){toast("Nothing to copy yet — drop some files first");return;}
+  await copyRich(n);
+  toast("Body copied — paste into the email body with Ctrl+V");
+}
+function draftOutlook(){
+  const m=buildModel(activeTab);
+  copyForOutlook(); // body (without the subject line) goes to the clipboard; subject rides in the mailto
+  const href='mailto:'+encodeURIComponent(m.to||'')
+    +'?subject='+encodeURIComponent(m.subject)
+    +(m.cc?'&cc='+encodeURIComponent(m.cc):'');
+  window.location.href=href;
+  setTimeout(()=>toast('Outlook draft opened (subject filled) — press Ctrl+V in the body'),300);
+}
+
+/* ---------------- master render ---------------- */
+function render(){renderPreview();}
+
+/* ---------------- wire up ---------------- */
+const drop=$('drop'),fi=$('fileInput');
+drop.addEventListener('click',()=>fi.click());
+fi.addEventListener('change',e=>addFiles(e.target.files));
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
+drop.addEventListener('drop',e=>addFiles(e.dataTransfer.files));
+
+renderTabs(); renderAbbrev(); renderFiles(); render();
+</script>
+</body>
+</html>
