@@ -110,9 +110,10 @@
 
   /* ---------------- responsive ---------------- */
   @media (max-width:900px){
-    .wrap{display:block;min-height:0}
-    .left,.right{max-height:none;overflow:visible;border-right:none}
-    .left{border-bottom:1px solid var(--line)}
+    /* stack the two panels but keep each one independently scrollable,
+       instead of letting the whole page scroll */
+    .wrap{grid-template-columns:1fr;grid-template-rows:minmax(160px,1fr) minmax(200px,1fr)}
+    .left{border-right:none;border-bottom:1px solid var(--line)}
     .grid3{grid-template-columns:1fr 1fr}
   }
   @media (max-width:560px){
