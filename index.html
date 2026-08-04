@@ -140,12 +140,20 @@
   <div class="left">
     <div class="card">
       <h2>Person / CRM details</h2>
-      <details>
-        <summary>Paste from CRM (auto-fill)</summary>
+
+      <label>Paste from Personnel Details Report</label>
+      <textarea id="crmTable" placeholder="Paste the row straight from the Personnel Details Report spreadsheet (include the header row), e.g.&#10;Position&#9;First Name&#9;Last Name&#9;Preferred Name&#9;Mobile&#9;Street&#9;Town&#9;State&#9;Postcode&#9;Email&#9;DOB&#9;NOK Full Name&#9;NOK Relationship&#9;NOK Contact&#10;Boilermaker/Welder&#9;RICHARD&#9;SPELLMAN&#9;&#9;0420 215 352&#9;266 HAY STREET&#9;EAST PERTH&#9;WA&#9;6004&#9;wr116jy@outlook.com&#9;29/01/1969&#9;EILEEN SPELLMAN&#9;MOTHER&#9;0011 64 6758 62"></textarea>
+      <div class="row" style="margin-top:6px"><button onclick="parsePersonnelReport()">Parse into form</button></div>
+      <p class="hint">Copy the cells directly out of the spreadsheet (headers + row) and paste above — this is the main way to fill personal details.</p>
+
+      <details style="margin-top:10px">
+        <summary>Or paste from CRM (label: value format)</summary>
         <textarea id="crmPaste" placeholder="Paste candidate block from CRM here, e.g.&#10;First Name: Shep&#10;Surname: Froggatt&#10;Mobile: 0400 000 000&#10;Email: shep@example.com&#10;DOB: 12/03/1988"></textarea>
         <div class="row" style="margin-top:6px"><button class="ghost" onclick="parseCRM()">Parse into form</button></div>
       </details>
 
+      <details style="margin-top:8px">
+        <summary>Or enter manually</summary>
       <div class="grid2">
         <div><label>Position / Role</label><input id="f_role" oninput="render()"></div>
         <div><label>Default Trade (Karridale)</label><input id="f_defaultTrade" oninput="render()"></div>
@@ -173,6 +181,7 @@
         <div><label>NOK Relationship</label><input id="f_nokRel" oninput="render()"></div>
         <div><label>NOK Contact</label><input id="f_nokContact" oninput="render()"></div>
       </div>
+      </details>
       <details style="margin-top:8px">
         <summary>MAMMOET / ID fields</summary>
         <div class="grid2">
@@ -701,11 +710,32 @@ const CRM_LABELS={
   "gender":"gender","sex":"gender","dob":"dob","d.o.b":"dob","date of birth":"dob",
   "mobile":"mobile","phone":"mobile","email":"email","e-mail":"email",
   "street":"street","town":"town","suburb":"town","city":"town","state":"state","postcode":"postcode","post code":"postcode",
-  "address":"__addr","nok":"nokName","next of kin":"nokName","nok name":"nokName","emergency contact":"nokName",
+  "address":"__addr","nok":"nokName","next of kin":"nokName","nok name":"nokName","nok full name":"nokName","emergency contact":"nokName",
   "nok relationship":"nokRel","relationship":"nokRel","nok contact":"nokContact","emergency phone":"nokContact",
   "employee":"employeeNo","employee #":"employeeNo","atsi":"atsi","aboriginal":"atsi",
   "bhp erms":"bhpErms","fmg sap":"fmgSap","rtio sap":"rtioSap","rh":"rh","years of experience":"yearsExp","experience":"yearsExp"
 };
+// fixed column order fallback for the Personnel Details Report when it's pasted without its header row
+const REPORT_COLUMNS=["role","firstName","lastName",null,"mobile","street","town","state","postcode","email","dob","nokName","nokRel","nokContact"];
+function parsePersonnelReport(){
+  const raw=$('crmTable').value;
+  const lines=raw.split(/\r?\n/).map(l=>l.replace(/\r$/,"")).filter(l=>l.trim().length);
+  if(!lines.length){ toast("Paste a row from the report first"); return; }
+  const first=lines[0].split('\t').map(h=>h.trim().toLowerCase());
+  const hasHeader=first.some(h=>CRM_LABELS[h]);
+  let fields,values;
+  if(hasHeader && lines.length>1){ fields=first.map(h=>CRM_LABELS[h]||null); values=lines[1].split('\t'); }
+  else{ fields=REPORT_COLUMNS; values=lines[0].split('\t'); }
+  let filled=0;
+  fields.forEach((field,i)=>{
+    if(!field||field==="__addr") return;
+    const v=(values[i]||"").trim();
+    if(!v||!$('f_'+field)) return;
+    $('f_'+field).value=v; filled++;
+  });
+  render();
+  toast(filled ? `Filled ${filled} field${filled===1?"":"s"} from report` : "No matching columns found");
+}
 function parseCRM(){
   const txt=$('crmPaste').value;
   txt.split(/\n+/).forEach(line=>{
