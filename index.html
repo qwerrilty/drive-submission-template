@@ -62,6 +62,7 @@
   .badge.cls{background:#12293a;color:#7cc4ff;border:1px solid #1c4763}
   .badge.named{background:#26221a;color:#d9b98a;border:1px solid #4a3f2c}
   .badge.issue{background:#16223a;color:#8fb6ff;border:1px solid #2b3f66}
+  .badge.dup{background:#3a2a12;color:var(--warn);border:1px solid #6b4a1c}
   .clsedit{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
   .clsedit input{width:120px;padding:3px 6px;font-size:12px;background:var(--panel2);border:1px solid #1c4763;color:#7cc4ff;border-radius:5px}
   .file .x{cursor:pointer;color:var(--muted);padding:0 4px}
@@ -88,6 +89,8 @@
   .preview .note{background:#fff6d8;border:1px solid #e5cf7a;padding:6px 9px;border-radius:6px;margin:10px 0;font-size:12px}
   .preview .pending{background:#fdecec;border:1px solid #e2a3a3;color:#8f2b34;padding:8px 11px;border-radius:6px;margin:0 0 14px;font-size:12px}
   .preview .pending b{color:#8f2b34}
+  .preview .expired-flag{background:#fff3d9;border:1px solid #e6b95c;color:#7a4a12;padding:8px 11px;border-radius:6px;margin:0 0 14px;font-size:12px}
+  .preview .expired-flag b{color:#7a4a12}
   .preview .yes{color:#137a3f;font-weight:700}
   .preview .no{color:#b23b46}
   .preview .exp{color:#a86a12}
@@ -530,8 +533,40 @@ function addFiles(list){
 }
 function removeFile(i){FILES.splice(i,1);renderFiles();render();}
 
+// group key used to spot duplicate compliances — same canonical key (and, for VOC, the same
+// competency) counts as a duplicate; unmapped/freeform files are never deduped against each other
+function dedupeKey(f){
+  if(!f.mapped || !f.keys.length) return null;
+  const k=f.keys[0];
+  return k==="voc" ? `voc|${f.vocType||""}` : k;
+}
+// which FILES indices are redundant copies of a compliance also satisfied by another file —
+// keeps the best one per group (a valid/non-expired copy over an expired one, then the latest date)
+function findDuplicates(){
+  const groups={};
+  FILES.forEach((f,i)=>{
+    const dk=dedupeKey(f);
+    if(dk===null) return;
+    (groups[dk]=groups[dk]||[]).push(i);
+  });
+  const dups=new Set();
+  Object.values(groups).forEach(idxs=>{
+    if(idxs.length<2) return;
+    let best=idxs[0];
+    for(const i of idxs.slice(1)){
+      const a=FILES[best], b=FILES[i];
+      if(!b.expired && a.expired){ best=i; continue; }
+      if(b.expired && !a.expired) continue;
+      if(b.expiry && (!a.expiry || b.expiry>a.expiry)) best=i;
+    }
+    idxs.forEach(i=>{ if(i!==best) dups.add(i); });
+  });
+  return dups;
+}
+
 function renderFiles(){
   const host=$('fileList'); host.innerHTML="";
+  const dups=findDuplicates();
   FILES.forEach((f,i)=>{
     const div=document.createElement('div'); div.className="file";
     let matchBadge = f.mapped
@@ -549,12 +584,15 @@ function renderFiles(){
       const label = f.expired ? 'EXPIRED ' : (k?'exp ':'issued ');
       detail=`<span class="badge ${cls}">${label}${fmtDate(f.expiry)}</span>`;
     }
-    div.innerHTML=`<span class="name">${f.name}</span>${matchBadge}${detail}<span class="x" onclick="removeFile(${i})">✕</span>`;
+    const dupBadge = dups.has(i) ? `<span class="badge dup">DUPLICATE</span>` : "";
+    div.innerHTML=`<span class="name">${f.name}</span>${matchBadge}${detail}${dupBadge}<span class="x" onclick="removeFile(${i})">✕</span>`;
     host.appendChild(div);
   });
   const named=[...new Set(FILES.filter(f=>!f.mapped).map(f=>f.compliance).filter(Boolean))];
-  $('flagBox').innerHTML = named.length
-    ? `<div class="softnote">Shown by filename (no standard code matched): <b>${named.join(", ")}</b></div>` : "";
+  const dupLabels=[...new Set([...dups].map(i=>FILES[i].displayName))];
+  $('flagBox').innerHTML =
+    (dupLabels.length ? `<div class="softnote">⚠ Duplicate compliance — only the best copy will be included in the submission: <b>${dupLabels.join(", ")}</b></div>` : "") +
+    (named.length ? `<div class="softnote">Shown by filename (no standard code matched): <b>${named.join(", ")}</b></div>` : "");
 }
 
 function titleCase(s){ return s.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()); }
@@ -571,7 +609,8 @@ function presentMap(){
   const map={};
   for(const f of FILES){
     for(const k of f.keys){
-      if(!map[k]) map[k]={expiry:null,dateKind:"issue",expired:false,hrwlClasses:[],dlClass:"",dlClasses:[],vocTypes:[]};
+      if(!map[k]) map[k]={expiry:null,dateKind:"issue",expired:false,hasValid:false,hrwlClasses:[],dlClass:"",dlClasses:[],vocTypes:[]};
+      if(!f.expired) map[k].hasValid=true;
       if(f.expiry&&(!map[k].expiry||f.expiry>map[k].expiry)){map[k].expiry=f.expiry;map[k].expired=f.expired;map[k].dateKind=f.dateKind;}
       if(k==="hrwl"&&f.hrwlClasses) f.hrwlClasses.forEach(c=>{if(!map[k].hrwlClasses.includes(c))map[k].hrwlClasses.push(c);});
       if(k.startsWith("dl_")&&f.dlClass) map[k].dlClass=f.dlClass;
@@ -592,15 +631,20 @@ function buildModel(tid){
   m.roleVariant = tid==="mammoet" ? (val('mammoetRole')||"Rigger") : null;
   for(const it of items){
     const [label,keys,extra]=it;
-    let present=false,expiry=null,dateKind="issue",expired=false,hrwlClasses=[],dlClasses=[],dlClass="",vocTypes=[];
+    let present=false,validPresent=false,expiry=null,dateKind="issue",expired=false,hrwlClasses=[],dlClasses=[],dlClass="",vocTypes=[];
     for(const k of keys){ if(pm[k]){
       present=true;
+      if(pm[k].hasValid) validPresent=true;
       if(pm[k].expiry&&(!expiry||pm[k].expiry>expiry)){expiry=pm[k].expiry;expired=pm[k].expired;dateKind=pm[k].dateKind;}
       if(pm[k].hrwlClasses&&pm[k].hrwlClasses.length) hrwlClasses=pm[k].hrwlClasses;
       if(pm[k].dlClass) dlClass=pm[k].dlClass;
       if(pm[k].dlClasses&&pm[k].dlClasses.length) dlClasses=pm[k].dlClasses;
       if(pm[k].vocTypes&&pm[k].vocTypes.length) vocTypes=pm[k].vocTypes;
     }}
+    // a compliance with only expired copies on file doesn't satisfy the requirement —
+    // keep it out of the attached/checked state and flag it separately instead
+    const expiredOnly = present && !validPresent;
+    present = validPresent;
     // detail shown instead of a date: HRWL classes, DL class(es), or VOC competencies
     let detail="",detailKind="expiry";
     const isHrwl=keys.includes("hrwl"), isDl=keys.some(k=>k.startsWith("dl_")), isVoc=keys.includes("voc");
@@ -608,20 +652,28 @@ function buildModel(tid){
     else if(present&&isDl){ detail=(dlClasses.length?dlClasses:[dlClass]).filter(Boolean).join(", "); detailKind="class"; }
     else if(present&&isVoc&&vocTypes.length){ detail=vocTypes.join(", "); detailKind="voc"; }
     else if(expiry){ detail=fmtDate(expiry); detailKind = dateKind==="expiry" ? "expiry" : "issue"; }
-    m.rows.push({label,present,expiry,expired,extra:extra||"",detail,detailKind,isHrwl,isDl});
+    m.rows.push({label,present,expiredOnly,expiry,expired,extra:extra||"",detail,detailKind,isHrwl,isDl});
   }
   // one line per dropped file, ordered by the template's hierarchy (image priority); extras appended in drop order
+  // — files with only expired copies, or redundant duplicates of another attached copy, are left
+  // off this list (surfaced via m.expiredFiles / the file manager's duplicate badge instead)
   const keyRank={};
   items.forEach((it,idx)=> it[1].forEach(k=>{ if(!(k in keyRank)) keyRank[k]=idx; }));
-  m.attachedFiles=FILES.map((f,fi)=>{
+  const dups=findDuplicates();
+  m.attachedFiles=FILES.map((f,i)=>({f,i})).filter(({f,i})=>!f.expired && !dups.has(i)).map(({f},fi)=>{
     const isHrwl=f.keys.includes("hrwl"), isDl=f.keys.some(k=>k.startsWith("dl_"));
     let detail="",detailKind="expiry";
     if(isHrwl){ detail=(f.hrwlClasses||[]).join(", "); detailKind="class"; }
     else if(isDl){ detail=(f.dlClasses&&f.dlClasses.length?f.dlClasses:[f.dlClass]).filter(Boolean).join(", "); detailKind="class"; }
     else if(f.expiry){ detail=fmtDate(f.expiry); detailKind = f.dateKind==="expiry" ? "expiry" : "issue"; }
     const rank=Math.min(Infinity,...f.keys.map(k=> k in keyRank?keyRank[k]:Infinity));
-    return {label:f.displayName,detail,detailKind,isHrwl,isDl,expired:f.expired,rank,order:fi};
+    return {label:f.displayName,detail,detailKind,isHrwl,isDl,expired:false,rank,order:fi};
   }).sort((a,b)=> a.rank-b.rank || a.order-b.order);
+  m.expiredFiles=FILES.filter(f=>f.expired).map(f=>{
+    let detail="",detailKind="expiry";
+    if(f.expiry){ detail=fmtDate(f.expiry); detailKind = f.dateKind==="expiry" ? "expiry" : "issue"; }
+    return {label:f.displayName,detail,detailKind};
+  });
   return m;
 }
 
@@ -663,17 +715,24 @@ function detailCell(r){
   return r.detail+(r.expired?' ⚠':'');
 }
 
+function expiredLabel(r){
+  if(!r.detail) return r.label;
+  return `${r.label} (${r.detailKind==="expiry"?"exp":"issued"} ${r.detail})`;
+}
+
 function renderPreview(){
   const m=buildModel(activeTab);
-  const missing=m.rows.filter(r=>!r.present).map(r=>r.label);
+  const missing=m.rows.filter(r=>!r.present&&!r.expiredOnly).map(r=>r.label);
+  const expiredNotice = m.dynamicAttached ? m.expiredFiles.map(expiredLabel) : m.rows.filter(r=>r.expiredOnly).map(expiredLabel);
 
   let h=`<div class="preview">`;
   if(m.header) h+=`<div class="hdr">${m.header}</div>`;
   h+=`<div class="subject">Subject: ${m.subject}</div>`;
   if(m.roleVariant) h+=`<h3>${m.roleVariant} Submission</h3>`;
 
-  // 1) Not yet attached — at the top of the template, above personal details
+  // 1) Not yet attached / expired — at the top of the template, above personal details
   if(missing.length) h+=`<div class="pending"><b>Not yet attached:</b> ${missing.join(", ")}</div>`;
+  if(expiredNotice.length) h+=`<div class="expired-flag"><b>⚠ Expired — needs renewal:</b> ${expiredNotice.join(", ")}</div>`;
 
   if(m.personalCols) h+=`<b>Personal Details</b>${personalTable(m.personalCols)}`;
   if(m.ids) h+=m.ids.map(i=>`<div class="idline">${i[0]}: ${val(i[1])||"—"}</div>`).join("");
@@ -804,9 +863,11 @@ async function downloadDocx(){
   kids.push(P("Subject: "+m.subject,{bold:true,size:26,after:160}));
   if(m.roleVariant) kids.push(P(m.roleVariant+" Submission",{bold:true,size:24}));
 
-  // Not yet attached — at the top, above personal details
-  const missingDocx=m.rows.filter(r=>!r.present).map(r=>r.label);
+  // Not yet attached / expired — at the top, above personal details
+  const missingDocx=m.rows.filter(r=>!r.present&&!r.expiredOnly).map(r=>r.label);
   if(missingDocx.length) kids.push(P("Not yet attached: "+missingDocx.join(", "),{bold:true,after:120}));
+  const expiredDocx = m.dynamicAttached ? m.expiredFiles.map(expiredLabel) : m.rows.filter(r=>r.expiredOnly).map(expiredLabel);
+  if(expiredDocx.length) kids.push(P("Expired — needs renewal: "+expiredDocx.join(", "),{bold:true,after:120}));
 
   const mkTable=(headers,rows)=>{
     const border={style:d.BorderStyle.SINGLE,size:1,color:"999999"};
