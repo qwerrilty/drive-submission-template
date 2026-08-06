@@ -6,7 +6,6 @@
 <title>Drive Personnel - CRT Submission</title>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
@@ -389,11 +388,14 @@ async function extractPdfText(file){
     return text;
   }catch(e){ return ""; }
 }
-// render a source (PDF first page or image file) to a canvas, then OCR it
+// OCR via a Cloudflare Worker proxying Google Vision (replaces Tesseract.js) —
+// the Worker holds the Vision API key server-side; see the approved OCR proposal
+// for the Worker script. Renders PDFs to an image first, same as before.
+const WORKER_URL = "https://green-term-ec41.sarsaleerril.workers.dev";
 async function ocrText(file){
-  if(!window.Tesseract) return "";
+  if(!WORKER_URL) return "";
   try{
-    let src;
+    let blob;
     if(/\.pdf$/i.test(file.name)){
       const buf=await file.arrayBuffer();
       const pdf=await pdfjsLib.getDocument({data:buf}).promise;
@@ -402,10 +404,10 @@ async function ocrText(file){
       const canvas=document.createElement("canvas");
       canvas.width=vp.width; canvas.height=vp.height;
       await page.render({canvasContext:canvas.getContext("2d"),viewport:vp}).promise;
-      src=canvas;
-    }else{ src=file; }
-    const {data}=await Tesseract.recognize(src,"eng");
-    return data.text||"";
+      blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+    }else{ blob=file; }
+    const res=await fetch(WORKER_URL,{method:"POST",body:blob});
+    return res.ok ? await res.text() : "";
   }catch(e){ return ""; }
 }
 function tokensOf(text){ return new Set(text.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/)); }
