@@ -417,16 +417,19 @@ async function ocrText(file){
   }catch(e){ return ""; }
 }
 function tokensOf(text){ return new Set(text.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/)); }
-// classes sit right after a "CLASS"/"CLASSES" label on the card — scope search there to avoid matching stray words
+// classes sit right after a "CLASS"/"CLASSES" label on the card — scope search there to avoid
+// matching stray words. Widened past the immediate next line since some cards' OCR reading order
+// interleaves an unrelated date between the label and the actual codes (e.g. real HRWL card text
+// came back as "Classes:\n12/03/2030\nC6 CO CT DG LF RA SB WP" — the expiry date, not the codes,
+// sitting first).
 function classRegion(text){
   const up=(text||"").toUpperCase();
-  const m=up.match(/CLASS(?:ES)?\s*:?\s*([\s\S]{0,40})/);
-  if(m){
-    let seg=m[1].split(/\n/)[0];
-    seg=seg.split(/\b(?:GRANTED|EXPIRES?|EXPIRY|DOB|DATE|LICENCE|LICENSE|NUMBER|NO)\b/)[0];
-    return seg;
-  }
-  return up;
+  const m=up.match(/CLASS(?:ES)?\s*:?\s*([\s\S]{0,90})/);
+  if(!m) return up;
+  const stop=/\b(?:GRANTED|EXPIRES?|EXPIRY|DOB|DATE|LICENCE|LICENSE|NUMBER|NO)\b/;
+  const isPureDate=l=>/^\s*\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\s*$/.test(l);
+  const lines=m[1].split(/\n/).filter(l=>l.trim() && !stop.test(l) && !isPureDate(l));
+  return lines.slice(0,2).join(" ");
 }
 function findHrwlClasses(text){ const tk=tokensOf(classRegion(text)); return HRWL_CODES.filter(c=>tk.has(c)); }
 function findDlClasses(text){ const tk=tokensOf(classRegion(text)); return DL_DISPLAY.filter(c=>tk.has(c)); }
