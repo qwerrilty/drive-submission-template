@@ -22,6 +22,9 @@
     flex:0 0 auto;background:var(--bg);z-index:20}
   header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
   header .sub{color:var(--muted);font-size:12px}
+  .dept-pill{margin-left:auto;display:none;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+  .dept-pill select{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit}
   .wrap{display:grid;grid-template-columns:340px 1fr;grid-template-rows:1fr;gap:0;flex:1 1 auto;min-height:0}
   .left{border-right:1px solid var(--line);padding:16px;overflow:auto;min-height:0}
   .right{padding:16px 20px;overflow:auto;min-height:0}
@@ -44,10 +47,10 @@
   details[open] summary{margin-bottom:8px}
 
   /* dropzone */
-  #drop{border:2px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
+  #drop,#mechDrop{border:2px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
     transition:.15s;cursor:pointer;background:var(--panel)}
-  #drop.hot{border-color:var(--accent);background:#172033;color:var(--text)}
-  #drop b{color:var(--text)}
+  #drop.hot,#mechDrop.hot{border-color:var(--accent);background:#172033;color:var(--text)}
+  #drop b,#mechDrop b{color:var(--text)}
   .files{margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
   #abbrevList{max-height:320px;overflow-y:auto;padding-right:4px}
   .file{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);
@@ -112,6 +115,15 @@
   footer.site-footer{border-top:1px solid var(--line);padding:14px 20px;text-align:center;
     color:var(--muted);font-size:12px;flex:0 0 auto}
 
+  /* department gate + MECH-specific chrome */
+  #deptGate{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:30px;text-align:center}
+  #deptGate .icon{font-size:30px;opacity:.5}
+  #deptGate p{margin:0;color:var(--muted);font-size:13px;max-width:38ch}
+  #deptGate select{width:auto;min-width:220px;padding:10px 14px;font-size:13px}
+  #mechWrap{flex:1 1 auto;min-height:0;overflow:auto;padding:16px 20px}
+  #mechWrap .inner{max-width:900px;margin:0 auto}
+  .stub-note{color:var(--muted);font-size:12.5px;line-height:1.6}
+
   /* ---------------- responsive ---------------- */
   @media (max-width:900px){
     /* stack the two panels but keep each one independently scrollable,
@@ -136,11 +148,30 @@
 </head>
 <body>
 <header>
-  <h1>Drive Personnel - CRT Submission</h1>
-  <span class="sub">Drive Personnel · drag compliance PDFs → auto-fill submission templates</span>
+  <h1 id="pageTitle">Drive Personnel - CRT Submission</h1>
+  <span class="sub" id="pageSub">Drive Personnel · drag compliance PDFs → auto-fill submission templates</span>
+  <div class="dept-pill" id="deptPill">
+    Department
+    <select id="deptSwitch" onchange="setMode(this.value)">
+      <option value="crt">CRT</option>
+      <option value="mech-planning">MECH (Planning)</option>
+      <option value="mech-mobilisation">MECH (Mobilisation)</option>
+    </select>
+  </div>
 </header>
 
-<div class="wrap">
+<div id="deptGate">
+  <div class="icon">🏢</div>
+  <p>Select a department to begin.</p>
+  <select id="deptSelect" onchange="setMode(this.value)">
+    <option value="">Select department…</option>
+    <option value="crt">CRT</option>
+    <option value="mech-planning">MECH (Planning)</option>
+    <option value="mech-mobilisation">MECH (Mobilisation)</option>
+  </select>
+</div>
+
+<div class="wrap" id="crtWrap" style="display:none">
   <!-- LEFT: inputs -->
   <div class="left">
     <div class="card">
@@ -241,6 +272,31 @@
     </div>
 
     <div id="previewHost"></div>
+  </div>
+</div>
+
+<div id="mechWrap" style="display:none">
+  <div id="mechPlanning" class="inner" style="display:none">
+    <div class="card">
+      <h2>Planning submission</h2>
+      <p class="stub-note">Stub only — Planning will get its own submission form/template (subject line, personal details, compliance checklist, docx export), built the same way CRT's tabs are, once its requirements are confirmed.</p>
+    </div>
+  </div>
+
+  <div id="mechMobilisation" class="inner" style="display:none">
+    <div class="card">
+      <h2>Compliance files (candidate)</h2>
+      <div id="mechDrop">Drag PDFs or licence photos here &nbsp;·&nbsp; or <b>click to browse</b>
+        <input type="file" id="mechFileInput" multiple accept=".pdf,image/*" style="display:none">
+      </div>
+      <div class="files" id="mechFileList"></div>
+      <div id="mechFlagBox"></div>
+    </div>
+    <div class="card">
+      <h2>Detected compliances</h2>
+      <p class="small">No fixed MECH checklist exists yet — this lists whatever's recognised from the dropped files' names, using the same recognition, expiry and duplicate logic as CRT.</p>
+      <div id="mechChecklist"></div>
+    </div>
   </div>
 </div>
 
@@ -353,6 +409,28 @@ const TEMPLATES = {
 /* ---------------- state ---------------- */
 let FILES = [];         // {name, keys:[canonical], compliance, expiry:Date|null, expired:bool, raw}
 let activeTab = "drive";
+let MODE = null;        // null | "crt" | "mech-planning" | "mech-mobilisation"
+
+/* ---------------- department switcher ---------------- */
+function setMode(m){
+  MODE = m || null;
+  $('deptGate').style.display = MODE ? 'none' : 'flex';
+  $('crtWrap').style.display = MODE==='crt' ? 'grid' : 'none';
+  $('mechWrap').style.display = (MODE==='mech-planning'||MODE==='mech-mobilisation') ? 'block' : 'none';
+  $('mechPlanning').style.display = MODE==='mech-planning' ? 'block' : 'none';
+  $('mechMobilisation').style.display = MODE==='mech-mobilisation' ? 'block' : 'none';
+  $('deptPill').style.display = MODE ? 'flex' : 'none';
+  if($('deptSwitch')) $('deptSwitch').value = MODE || 'crt';
+  if($('deptSelect')) $('deptSelect').value = MODE || '';
+  $('pageTitle').textContent = MODE==='crt' ? 'Drive Personnel - CRT Submission'
+    : MODE==='mech-planning' ? 'Drive Personnel - MECH Submission (Planning)'
+    : MODE==='mech-mobilisation' ? 'Drive Personnel - MECH Submission (Mobilisation)'
+    : 'Drive Personnel Submission';
+  $('pageSub').textContent = MODE==='crt' ? 'Drive Personnel · drag compliance PDFs → auto-fill submission templates'
+    : MODE==='mech-planning' ? 'Mechanical department — planning'
+    : MODE==='mech-mobilisation' ? 'Mechanical department — mobilisation compliance checker'
+    : 'Select a department to begin';
+}
 
 /* ---------------- helpers ---------------- */
 const $=id=>document.getElementById(id);
@@ -558,9 +636,9 @@ function dedupeKey(f){
 }
 // which FILES indices are redundant copies of a compliance also satisfied by another file —
 // keeps the best one per group (a valid/non-expired copy over an expired one, then the latest date)
-function findDuplicates(){
+function findDuplicates(files=FILES){
   const groups={};
-  FILES.forEach((f,i)=>{
+  files.forEach((f,i)=>{
     const dk=dedupeKey(f);
     if(dk===null) return;
     (groups[dk]=groups[dk]||[]).push(i);
@@ -570,7 +648,7 @@ function findDuplicates(){
     if(idxs.length<2) return;
     let best=idxs[0];
     for(const i of idxs.slice(1)){
-      const a=FILES[best], b=FILES[i];
+      const a=files[best], b=files[i];
       if(!b.expired && a.expired){ best=i; continue; }
       if(b.expired && !a.expired) continue;
       if(b.expiry && (!a.expiry || b.expiry>a.expiry)) best=i;
@@ -812,7 +890,114 @@ function reparse(){FILES=FILES.map(f=>{
   n.hrwlClasses=f.hrwlClasses||[]; n.dlClasses=f.dlClasses||[]; n.dlClass=f.dlClass||"";
   if(n.dlClass && n.keys.some(k=>k.startsWith("dl_"))) n.keys=[DL_CLASS_TO_KEY[n.dlClass]||"dl_c"];
   return n;
-});renderFiles();render();}
+});renderFiles();render();
+MECH_FILES=MECH_FILES.map(f=>{
+  const n=parseName(f.name);
+  n.hrwlClasses=f.hrwlClasses||[]; n.dlClasses=f.dlClasses||[]; n.dlClass=f.dlClass||"";
+  if(n.dlClass && n.keys.some(k=>k.startsWith("dl_"))) n.keys=[DL_CLASS_TO_KEY[n.dlClass]||"dl_c"];
+  return n;
+});renderMechFiles();}
+
+/* ================================================================
+   MECH -> Mobilisation: standalone compliance checker. Reuses the
+   same parseName()/ABBREV/LIB recognition, HRWL/DL class detection
+   (incl. OCR fallback), and expiry + duplicate logic as CRT, on its
+   own file list — no Person/CRM Details panel, no fixed template.
+   ================================================================ */
+let MECH_FILES = [];
+function mechAddFiles(list){
+  for(const f of list){
+    if(MECH_FILES.some(x=>x.name===f.name)) continue;
+    const entry=parseName(f.name);
+    MECH_FILES.push(entry);
+    if(window.pdfjsLib && /\.(pdf|png|jpe?g|webp)$/i.test(f.name)) mechEnrichFile(entry,f);
+  }
+  renderMechFiles();
+}
+function mechRemoveFile(i){MECH_FILES.splice(i,1);renderMechFiles();}
+async function mechEnrichFile(entry,file){
+  const code=norm((entry.compliance.split(/\s+/)[0])||"");
+  const isHrwl = entry.keys.includes("hrwl") || code==="HRWL";
+  const isDl = entry.keys.some(k=>k.startsWith("dl_")) || code==="DL" || code==="MDL";
+  if(!isHrwl && !isDl) return;
+  entry.reading=true; renderMechFiles();
+  let text=""; if(/\.pdf$/i.test(file.name)) text=await extractPdfText(file);
+  let hrwl = isHrwl ? findHrwlClasses(text) : [];
+  let dls  = isDl  ? findDlClasses(text)  : [];
+  if((isHrwl && !hrwl.length) || (isDl && !dls.length)){
+    entry.ocr=true; renderMechFiles();
+    const otext=await ocrText(file);
+    if(isHrwl && !hrwl.length) hrwl=findHrwlClasses(otext);
+    if(isDl && !dls.length) dls=findDlClasses(otext);
+    entry.ocr=false;
+  }
+  if(isHrwl) entry.hrwlClasses=hrwl;
+  if(isDl){ entry.dlClasses=dls; entry.dlClass=primaryDl(dls);
+    if(entry.dlClass) entry.keys=[DL_CLASS_TO_KEY[entry.dlClass]||"dl_c"]; }
+  entry.reading=false;
+  renderMechFiles();
+}
+function mechSetHrwl(i,str){ MECH_FILES[i].hrwlClasses=str.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/).filter(Boolean); renderMechFiles(); }
+function mechSetDl(i,str){ const a=str.toUpperCase().replace(/[^A-Z0-9]/g," ").split(/\s+/).filter(Boolean);
+  MECH_FILES[i].dlClasses=a; MECH_FILES[i].dlClass=primaryDl(a);
+  if(MECH_FILES[i].dlClass) MECH_FILES[i].keys=[DL_CLASS_TO_KEY[MECH_FILES[i].dlClass]||"dl_c"]; renderMechFiles(); }
+
+function renderMechFiles(){
+  const host=$('mechFileList'); host.innerHTML="";
+  const dups=findDuplicates(MECH_FILES);
+  MECH_FILES.forEach((f,i)=>{
+    const div=document.createElement('div'); div.className="file";
+    let matchBadge = f.mapped
+      ? `<span class="badge match">${f.displayName}</span>`
+      : `<span class="badge named">${f.displayName}</span>`;
+    const isHrwl=f.keys.includes("hrwl")||norm(f.compliance.split(/\s+/)[0]||"")==="HRWL";
+    const isDl=f.keys.some(k=>k.startsWith("dl_"))||["DL","MDL"].includes(norm(f.compliance.split(/\s+/)[0]||""));
+    let detail="";
+    if(f.reading) detail=`<span class="badge">${f.ocr?'reading photo (OCR)…':'reading PDF…'}</span>`;
+    else if(isHrwl) detail=`<span class="clsedit">classes <input value="${f.hrwlClasses.join(' ')}" placeholder="e.g. LF WP" onchange="mechSetHrwl(${i},this.value)"></span>`;
+    else if(isDl) detail=`<span class="clsedit">class <input value="${f.dlClasses.join(' ')}" placeholder="e.g. HR" onchange="mechSetDl(${i},this.value)"></span>`;
+    else if(f.expiry){
+      const k=f.dateKind==="expiry";
+      const cls = f.expired ? 'expired' : (k?'exp':'issue');
+      const label = f.expired ? 'EXPIRED ' : (k?'exp ':'issued ');
+      detail=`<span class="badge ${cls}">${label}${fmtDate(f.expiry)}</span>`;
+    }
+    const dupBadge = dups.has(i) ? `<span class="badge dup">DUPLICATE</span>` : "";
+    div.innerHTML=`<span class="name">${f.name}</span>${matchBadge}${detail}${dupBadge}<span class="x" onclick="mechRemoveFile(${i})">✕</span>`;
+    host.appendChild(div);
+  });
+  const named=[...new Set(MECH_FILES.filter(f=>!f.mapped).map(f=>f.compliance).filter(Boolean))];
+  const dupLabels=[...new Set([...dups].map(i=>MECH_FILES[i].displayName))];
+  $('mechFlagBox').innerHTML =
+    (dupLabels.length ? `<div class="softnote">⚠ Duplicate compliance — only the best copy will be included: <b>${dupLabels.join(", ")}</b></div>` : "") +
+    (named.length ? `<div class="softnote">Shown by filename (no standard code matched): <b>${named.join(", ")}</b></div>` : "");
+  renderMechChecklist();
+}
+function renderMechChecklist(){
+  const host=$('mechChecklist');
+  const dups=findDuplicates(MECH_FILES);
+  const attached=MECH_FILES.map((f,i)=>({f,i})).filter(({f,i})=>!f.expired && !dups.has(i)).map(({f})=>f);
+  const expiredFiles=MECH_FILES.filter(f=>f.expired).map(f=>{
+    let detail="",detailKind="expiry";
+    if(f.expiry){ detail=fmtDate(f.expiry); detailKind = f.dateKind==="expiry" ? "expiry" : "issue"; }
+    return {label:f.displayName,detail,detailKind};
+  });
+  let h="";
+  if(expiredFiles.length) h+=`<div class="softnote" style="border-color:#6b4a1c">⚠ Expired — needs renewal: <b>${expiredFiles.map(expiredLabel).join(", ")}</b></div>`;
+  if(!attached.length) h+=`<div class="miss" style="color:#ef5b6a">No compliance files attached yet.</div>`;
+  else h+=`<ul style="margin:8px 0 0;padding-left:18px">`+attached.map(f=>{
+    let detail="";
+    const isHrwl=f.keys.includes("hrwl"), isDl=f.keys.some(k=>k.startsWith("dl_"));
+    if(isHrwl && f.hrwlClasses.length) detail=` <span style="color:#4f8cff">(classes: ${f.hrwlClasses.join(", ")})</span>`;
+    else if(isDl && (f.dlClasses.length||f.dlClass)) detail=` <span style="color:#4f8cff">(class: ${(f.dlClasses.length?f.dlClasses:[f.dlClass]).join(", ")})</span>`;
+    else if(f.expiry){
+      const label = f.dateKind==="expiry" ? "exp" : "issued";
+      detail = ` <span style="color:#9aa3b2">(${label} ${fmtDate(f.expiry)})</span>`;
+    }
+    return `<li style="margin:4px 0">${f.displayName}${detail}</li>`;
+  }).join("") + `</ul>`;
+  host.innerHTML=h;
+}
 
 /* ---------------- CRM paste parser ---------------- */
 const CRM_LABELS={
@@ -1011,7 +1196,15 @@ fi.addEventListener('change',e=>addFiles(e.target.files));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('hot');}));
 drop.addEventListener('drop',e=>addFiles(e.dataTransfer.files));
 
-renderTabs(); renderAbbrev(); renderFiles(); render();
+const mechDrop=$('mechDrop'), mechFi=$('mechFileInput');
+mechDrop.addEventListener('click',()=>mechFi.click());
+mechFi.addEventListener('change',e=>mechAddFiles(e.target.files));
+['dragenter','dragover'].forEach(ev=>mechDrop.addEventListener(ev,e=>{e.preventDefault();mechDrop.classList.add('hot');}));
+['dragleave','drop'].forEach(ev=>mechDrop.addEventListener(ev,e=>{e.preventDefault();mechDrop.classList.remove('hot');}));
+mechDrop.addEventListener('drop',e=>mechAddFiles(e.dataTransfer.files));
+
+renderTabs(); renderAbbrev(); renderFiles(); renderMechFiles(); render();
+setMode(null);
 </script>
 </body>
 </html>
