@@ -400,11 +400,17 @@ async function ocrText(file){
       const buf=await file.arrayBuffer();
       const pdf=await pdfjsLib.getDocument({data:buf}).promise;
       const page=await pdf.getPage(1);
-      const vp=page.getViewport({scale:2});
+      // cap the render size — some compliance PDFs are full high-res scanned pages,
+      // and rendering those at a flat 2x scale as PNG can produce 40MB+ images that
+      // blow past the OCR Worker's resource limits; JPEG also compresses scans far
+      // better than PNG
+      const base=page.getViewport({scale:1});
+      const scale=Math.min(2,1800/Math.max(base.width,base.height));
+      const vp=page.getViewport({scale});
       const canvas=document.createElement("canvas");
       canvas.width=vp.width; canvas.height=vp.height;
       await page.render({canvasContext:canvas.getContext("2d"),viewport:vp}).promise;
-      blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/png"));
+      blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",0.85));
     }else{ blob=file; }
     const res=await fetch(WORKER_URL,{method:"POST",body:blob});
     return res.ok ? await res.text() : "";
