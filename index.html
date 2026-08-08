@@ -366,9 +366,10 @@ function fmtDate(d){if(!d)return "";const p=n=>String(n).padStart(2,'0');return 
 /* ---------------- PDF reading: HRWL classes + DL class ---------------- */
 if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
 
-// Australian HRWL class codes (WorkSafe)
-const HRWL_CODES=["SB","SI","SA","DG","RB","RI","RA","CT","CS","CB","CP","CV","CN",
-  "C2","C6","C1","C0","C100","DC","HM","HP","PB","WP","LF","LO","BB","BI","BA","TO","ES"];
+// Australian HRWL class codes (WorkSafe / Safe Work Australia) — all 29 official classes:
+// scaffolding, dogging/rigging, cranes, hoisting/concrete placing, EWP/material handling, pressure equipment
+const HRWL_CODES=["SB","SI","SA","DG","RB","RI","RA","CT","CS","CD","CP","CB","CV","CN",
+  "C2","C6","C1","C0","HM","HP","PB","WP","RS","LF","LO","BS","BA","TO","ES"];
 // Driver licence classes — display set (heaviest first) and routing rank
 const DL_DISPLAY=["MC","HC","HR","MR","LR","C","R","RE"];
 const DL_RANK=["MC","HC","HR","MR","LR","C"];
@@ -431,7 +432,11 @@ function classRegion(text){
   const lines=m[1].split(/\n/).filter(l=>l.trim() && !stop.test(l) && !isPureDate(l));
   return lines.slice(0,2).join(" ");
 }
-function findHrwlClasses(text){ const tk=tokensOf(classRegion(text)); return HRWL_CODES.filter(c=>tk.has(c)); }
+function findHrwlClasses(text){
+  const tk=tokensOf(classRegion(text));
+  if(tk.has("CO")) tk.add("C0"); // OCR commonly misreads the digit 0 in "C0" as a letter O
+  return HRWL_CODES.filter(c=>tk.has(c));
+}
 function findDlClasses(text){ const tk=tokensOf(classRegion(text)); return DL_DISPLAY.filter(c=>tk.has(c)); }
 function primaryDl(dls){ return DL_RANK.find(c=>dls.includes(c))||dls[0]||""; }
 
